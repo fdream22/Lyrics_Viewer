@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lirik Viewer with Google Drive</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/wanakana@5.0.0/umd/wanakana.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+        }
+        .lyric-line {
+            transition: all 0.2s ease;
+        }
+        .lyric-line.active {
+            font-weight: bold;
+            font-size: 1.1em;
+            color: #3b82f6;
+        }
+        .toast {
+            animation: fadeInOut 3s ease-in-out forwards;
+        }
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translateY(20px); }
+            10% { opacity: 1; transform: translateY(0); }
+            90% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-20px); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold text-center text-blue-600 mb-2">Lirik Viewer</h1>
+            <p class="text-center text-gray-600">View and manage your .lrc files from Google Drive</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Left sidebar - Drive integration -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-xl font-semibold mb-4 text-gray-800">Google Drive Integration</h2>
+                
+                <div id="auth-section" class="mb-6">
+                    <button id="auth-button" class="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded flex items-center justify-center">
+                        <svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M3 20h18v-4H3v4zm6.6-12l-5.2 6.8c-.3.4-.4.9-.2 1.4.2.5.6.8 1.1.8h14l-6-8H9.6zM7 4h3.5l2 2H22v8h-2V6h-8.5l-2-2H7v4z"/>
+                        </svg>
+                        Sign in with Google
+                    </button>
+                </div>
+
+                <div id="drive-controls" class="hidden space-y-4">
+                    <div>
+                        <h3 class="font-medium text-gray-700 mb-2">Folder Content</h3>
+                        <div class="border rounded-lg p-3 bg-gray-50 max-h-64 overflow-y-auto">
+                            <ul id="file-list" class="space-y-1">
+                                <li class="text-gray-500 italic">No files loaded</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3 class="font-medium text-gray-700 mb-2">Upload LRC File</h3>
+                        <div class="flex items-center space-x-2">
+                            <input type="file" id="file-upload" accept=".lrc" class="hidden">
+                            <button id="upload-button" class="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded">
+                                Choose File
+                            </button>
+                            <button id="refresh-button" class="bg-gray-200 hover:bg-gray-300 text-gray-700 py-2 px-4 rounded">
+                                Refresh
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="pt-4 border-t">
+                        <h3 class="font-medium text-gray-700 mb-2">Search LRC Files</h3>
+                        <div class="relative">
+                            <input type="text" id="search-input" placeholder="Search by filename or artist..." 
+                                   class="w-full border rounded-lg py-2 px-4 pl-10 focus:outline-none focus:ring-2 focus:ring-blue-300">
+                            <svg class="w-5 h-5 text-gray-400 absolute left-3 top-2.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main content - Lyrics display -->
+            <div class="lg:col-span-2 space-y-6">
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-semibold text-gray-800">Lyrics Viewer</h2>
+                        <div class="flex items-center space-x-3">
+                            <button id="toggle-romaji" class="bg-gray-200 hover:bg-gray-300 text-gray-700 py-1 px-3 rounded text-sm">
+                                Hide Romaji
+                            </button>
+                            <span id="jp-indicator" class="bg-gray-200 text-gray-700 py-1 px-3 rounded text-sm hidden">
+                                Non-JP
+                            </span>
+                        </div>
+                    </div>
+
+                    <div id="lyrics-container" class="border rounded-lg p-6 bg-gray-50 min-h-64 max-h-[32rem] overflow-y-auto text-center">
+                        <p class="text-gray-500 italic">No lyrics loaded. Select a file from Google Drive.</p>
+                    </div>
+
+                    <div class="mt-4 flex justify-between items-center text-sm text-gray-500">
+                        <div id="current-time">00:00</div>
+                        <div id="current-file">No file selected</div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4">Statistics</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="bg-blue-50 p-4 rounded-lg">
+                            <div class="text-blue-600 font-medium">Total Files</div>
+                            <div id="total-files" class="text-2xl font-bold">0</div>
+                        </div>
+                        <div class="bg-green-50 p-4 rounded-lg">
+                            <div class="text-green-600 font-medium">Japanese Files</div>
+                            <div id="japanese-files" class="text-2xl font-bold">0</div>
+                        </div>
+                        <div class="bg-purple-50 p-4 rounded-lg">
+                            <div class="text-purple-600 font-medium">Recently Opened</div>
+                            <div id="recent-files" class="text-sm">
+                                <p class="italic">No recent files</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast notification container -->
+    <div id="toast-container" class="fixed bottom-4 right-4 space-y-2 z-50"></div>
+
+    <script>
+        // Global variables
+        let gapiLoaded = false;
+        let gisLoaded = false;
+        let tokenClient;
+        let currentFileContent = '';
+        let currentFileName = '';
+        let lyricsData = [];
+        let currentTime = 0;
+        let showRomaji = true;
+        let filesCache = [];
+        let recentFiles = JSON.parse(localStorage.getItem('recentFiles')) || [];
+
+        // Initialize the app when both Google APIs are loaded
+        function initializeApp() {
+            if (gapiLoaded && gisLoaded) {
+                document.getElementById('auth-button').addEventListener('click', handleAuthClick);
+                document.getElementById('upload-button').addEventListener('click', handleUploadClick);
+                document.getElementById('refresh-button').addEventListener('click', refreshFiles);
+                document.getElementById('toggle-romaji').addEventListener('click', toggleRomaji);
+                document.getElementById('search-input').addEventListener('input', handleSearch);
+                document.getElementById('file-upload').addEventListener('change', handleFileSelect);
+                
+                // Check if user is already signed in
+                if (localStorage.getItem('googleAuthToken')) {
+                    loadDriveFiles();
+                }
+                
+                updateStatistics();
+                updateRecentFilesDisplay();
+            }
+        }
+
+        // Handle Google Auth button click
+        function handleAuthClick() {
+            if (localStorage.getItem('googleAuthToken')) {
+                // User is signed in, sign them out
+                google.accounts.oauth2.revoke(localStorage.getItem('googleAuthToken'), () => {
+                    localStorage.removeItem('googleAuthToken');
+                    document.getElementById('auth-button').innerHTML = `
+                        <svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M3 20h18v-4H3v4zm6.6-12l-5.2 6.8c-.3.4-.4.9-.2 1.4.2.5.6.8 1.1.8h14l-6-8H9.6zM7 4h3.5l2 2H22v8h-2V6h-8.5l-2-2H7v4z"/>
+                        </svg>
+                        Sign in with Google
+                    `;
+                    document.getElementById('drive-controls').classList.add('hidden');
+                    showToast('Signed out successfully', 'success');
+                });
+            } else {
+                // Request authorization
+                tokenClient.callback = async (resp) => {
+                    if (resp.error !== undefined) {
+                        showToast('Authentication failed: ' + resp.error, 'error');
+                        return;
+                    }
+                    localStorage.setItem('googleAuthToken', resp.access_token);
+                    document.getElementById('auth-button').innerHTML = `
+                        <svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M3 20h18v-4H3v4zm6.6-12l-5.2 6.8c-.3.4-.4.9-.2 1.4.2.5.6.8 1.1.8h14l-6-8H9.6zM7 4h3.5l2 2H22v8h-2V6h-8.5l-2-2H7v4z"/>
+                        </svg>
+                        Sign out
+                    `;
+                    showToast('Signed in successfully', 'success');
+                    await loadDriveFiles();
+                };
+
+                if (localStorage.getItem('googleAuthToken')) {
+                    tokenClient.requestAccessToken();
+                } else {
+                    tokenClient.requestAccessToken({prompt: 'consent'});
+                }
+            }
+        }
+
+        // Load files from Google Drive
+        async function loadDriveFiles() {
+            try {
+                const response = await gapi.client.drive.files.list({
+                    q: "mimeType='text/plain' and name contains '.lrc' and trashed=false",
+                    fields: 'files(id, name, modifiedTime)',
+                    orderBy: 'modifiedTime desc',
+                    pageSize: 50
+                });
+                
+                filesCache = response.result.files;
+                updateFileList(filesCache);
+                document.getElementById('drive-controls').classList.remove('hidden');
+                updateStatistics();
+            } catch (error) {
+                showToast('Failed to load files: ' + error.result.error.message, 'error');
+            }
+        }
+
+        // Update the file list display
+        function updateFileList(files) {
+            const fileListElement = document.getElementById('file-list');
+            
+            if (files.length === 0) {
+                fileListElement.innerHTML = '<li class="text-gray-500 italic">No .lrc files found</li>';
+                return;
+            }
+            
+            fileListElement.innerHTML = files.map(file => `
+                <li class="p-2 hover:bg-gray-100 rounded cursor-pointer flex justify-between items-center" data-id="${file.id}">
+                    <span class="truncate">${file.name}</span>
+                    <span class="text-xs text-gray-400">${new Date(file.modifiedTime).toLocaleDateString()}</span>
+                </li>
+            `).join('');
+            
+            // Add click event listeners to each file
+            fileListElement.querySelectorAll('li').forEach(item => {
+                item.addEventListener('click', () => {
+                    const fileId = item.getAttribute('data-id');
+                    const fileName = files.find(f => f.id === fileId).name;
+                    loadFileContent(fileId, fileName);
+                });
+            });
+        }
+
+        // Load content of a specific file
+        async function loadFileContent(fileId, fileName) {
+            try {
+                const response = await gapi.client.drive.files.get({
+                    fileId: fileId,
+                    alt: 'media'
+                });
+                
+                currentFileContent = response.body;
+                currentFileName = fileName;
+                document.getElementById('current-file').textContent = fileName;
+                
+                // Parse the LRC file
+                parseLrcFile(currentFileContent);
+                
+                // Add to recent files
+                addToRecentFiles({id: fileId, name: fileName});
+                
+                // Check if the file contains Japanese characters
+                checkJapaneseContent(currentFileContent);
+                
+                showToast('File loaded successfully', 'success');
+            } catch (error) {
+                showToast('Failed to load file: ' + error.result.error.message, 'error');
+            }
+        }
+
+        // Parse LRC file content
+        function parseLrcFile(content) {
+            lyricsData = [];
+            const lines = content.split('\n');
+            
+            for (const line of lines) {
+                // Match timestamps like [mm:ss.xx]
+                const timeMatch = line.match(/^\[(\d+):(\d+)\.(\d+)\]/);
+                if (timeMatch) {
+                    const minutes = parseInt(timeMatch[1]);
+                    const seconds = parseInt(timeMatch[2]);
+                    const hundredths = parseInt(timeMatch[3]);
+                    const timeInSeconds = minutes * 60 + seconds + hundredths / 100;
+                    const text = line.replace(timeMatch[0], '').trim();
+                    
+                    if (text) {
+                        lyricsData.push({
+                            time: timeInSeconds,
+                            text: text,
+                            romaji: safeRomaji(text)
+                        });
+                    }
+                }
+            }
+            
+            // Sort by time
+            lyricsData.sort((a, b) => a.time - b.time);
+            
+            // Display lyrics
+            displayLyrics();
+            
+            // Start the lyric sync timer if not already running
+            if (!window.lyricSyncInterval) {
+                window.lyricSyncInterval = setInterval(syncLyricsWithTime, 100);
+            }
+        }
+
+        // Display lyrics in the container
+        function displayLyrics() {
+            const container = document.getElementById('lyrics-container');
+            
+            if (lyricsData.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 italic">No lyrics found in this file</p>';
+                return;
+            }
+            
+            container.innerHTML = lyricsData.map(lyric => `
+                <div class="lyric-line mb-4" data-time="${lyric.time}">
+                    <div class="text-lg">${lyric.text}</div>
+                    <div class="romaji text-sm text-gray-400">${lyric.romaji}</div>
+                </div>
+            `).join('');
+        }
+
+        // Sync lyrics with current time
+        function syncLyricsWithTime() {
+            currentTime += 0.1;
+            document.getElementById('current-time').textContent = formatTime(currentTime);
+            
+            // Find the current lyric
+            let activeIndex = -1;
+            for (let i = 0; i < lyricsData.length; i++) {
+                if (lyricsData[i].time <= currentTime && 
+                    (i === lyricsData.length - 1 || lyricsData[i + 1].time > currentTime)) {
+                    activeIndex = i;
+                    break;
+                }
+            }
+            
+            // Update active lyric
+            document.querySelectorAll('.lyric-line').forEach((line, index) => {
+                if (index === activeIndex) {
+                    line.classList.add('active');
+                    // Scroll to the active line
+                    line.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                } else {
+                    line.classList.remove('active');
+                }
+            });
+        }
+
+        // Format time as mm:ss
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        // Safe romaji conversion
+        function safeRomaji(text) {
+            if (typeof text !== "string") return "";
+            try {
+                return wanakana.toRomaji(text);
+            } catch {
+                return text;
+            }
+        }
+
+        // Toggle romaji visibility
+        function toggleRomaji() {
+            showRomaji = !showRomaji;
+            document.getElementById('toggle-romaji').textContent = showRomaji ? 'Hide Romaji' : 'Show Romaji';
+            document.querySelectorAll('.romaji').forEach(el => {
+                el.style.display = showRomaji ? 'block' : 'none';
+            });
+        }
+
+        // Handle file upload
+        function handleUploadClick() {
+            document.getElementById('file-upload').click();
+        }
+
+        // Handle file selection for upload
+        async function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            if (!file.name.endsWith('.lrc')) {
+                showToast('Please select a .lrc file', 'error');
+                return;
+            }
+            
+            try {
+                const content = await readFileAsText(file);
+                await uploadFileToDrive(file.name, content);
+                event.target.value = ''; // Reset file input
+            } catch (error) {
+                showToast('Failed to upload file: ' + error.message, 'error');
+            }
+        }
+
+        // Read file as text
+        function readFileAsText(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => reject(new Error('Failed to read file'));
+                reader.readAsText(file);
+            });
+        }
+
+        // Upload file to Google Drive
+        async function uploadFileToDrive(filename, content) {
+            try {
+                const fileMetadata = {
+                    name: filename,
+                    mimeType: 'text/plain'
+                };
+                
+                const media = {
+                    mimeType: 'text/plain',
+                    body: content
+                };
+                
+                const response = await gapi.client.drive.files.create({
+                    resource: fileMetadata,
+                    media: media,
+                    fields: 'id, name, modifiedTime'
+               });
+                
+                showToast('File uploaded successfully', 'success');
+                refreshFiles();
+            } catch (error) {
+                showToast('Upload failed: ' + error.result.error.message, 'error');
+            }
+        }
+
+        // Refresh file list
+        function refreshFiles() {
+            loadDriveFiles();
+        }
+
+        // Handle search input
+        function handleSearch(event) {
+            const query = event.target.value.toLowerCase();
+            if (!query) {
+                updateFileList(filesCache);
+                return;
+            }
+            
+            const filteredFiles = filesCache.filter(file => 
+                file.name.toLowerCase().includes(query) || 
+                (currentFileContent && currentFileContent.toLowerCase().includes(query))
+            );
+            
+            updateFileList(filteredFiles);
+        }
+
+        // Check if content contains Japanese characters
+        function checkJapaneseContent(content) {
+            const japaneseRegex = /[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uff9f\u4e00-\u9faf\u3400-\u4dbf]/;
+            const containsJapanese = japaneseRegex.test(content);
+            
+            const indicator = document.getElementById('jp-indicator');
+            indicator.classList.remove('hidden');
+            indicator.textContent = containsJapanese ? 'JP' : 'Non-JP';
+            indicator.className = containsJapanese ? 
+                'bg-red-100 text-red-700 py-1 px-3 rounded text-sm' : 
+                'bg-gray-200 text-gray-700 py-1 px-3 rounded text-sm';
+        }
+
+        // Update statistics
+        function updateStatistics() {
+            document.getElementById('total-files').textContent = filesCache.length;
+            
+            let japaneseCount = 0;
+            filesCache.forEach(file => {
+                // This is a simplified check - in a real app you'd need to check file content
+                if (file.name.match(/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9faf]/)) {
+                    japaneseCount++;
+                }
+            });
+            
+            document.getElementById('japanese-files').textContent = japaneseCount;
+        }
+
+        // Add file to recent files
+        function addToRecentFiles(file) {
+            // Remove if already exists
+            recentFiles = recentFiles.filter(f => f.id !== file.id);
+            // Add to beginning
+            recentFiles.unshift(file);
+            // Keep only last 5
+            recentFiles = recentFiles.slice(0, 5);
+            
+            localStorage.setItem('recentFiles', JSON.stringify(recentFiles));
+            updateRecentFilesDisplay();
+        }
+
+        // Update recent files display
+        function updateRecentFilesDisplay() {
+            const container = document.getElementById('recent-files');
+            
+            if (recentFiles.length === 0) {
+                container.innerHTML = '<p class="italic">No recent files</p>';
+                return;
+            }
+            
+            container.innerHTML = recentFiles.map(file => `
+                <p class="truncate cursor-pointer hover:text-blue-600" data-id="${file.id}">${file.name}</p>
+            `).join('');
+            
+            // Add click event listeners
+            container.querySelectorAll('p').forEach(item => {
+                item.addEventListener('click', () => {
+                    const fileId = item.getAttribute('data-id');
+                    const fileName = recentFiles.find(f => f.id === fileId).name;
+                    loadFileContent(fileId, fileName);
+                });
+            });
+        }
+
+        // Show toast notification
+        function showToast(message, type = 'info') {
+            const toastContainer = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast px-4 py-2 rounded shadow-lg ${
+                type === 'error' ? 'bg-red-100 text-red-700' : 
+                type === 'success' ? 'bg-green-100 text-green-700' : 
+                'bg-blue-100 text-blue-700'
+            }`;
+            toast.textContent = message;
+            
+            toastContainer.appendChild(toast);
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        }
+
+        // Load Google APIs
+        function loadGoogleApis() {
+            // Load Google API client library
+            const scriptGapi = document.createElement('script');
+            scriptGapi.src = 'https://apis.google.com/js/api.js';
+            scriptGapi.onload = () => {
+                gapi.load('client', async () => {
+                    try {
+                        await gapi.client.init({});
+                        await gapi.client.load('https://www.googleapis.com/discovery/v1/apis/drive/v3/rest');
+                        gapiLoaded = true;
+                        initializeApp();
+                    } catch (error) {
+                        showToast('Failed to load Google API client: ' + error.details, 'error');
+                    }
+                });
+            };
+            document.body.appendChild(scriptGapi);
+            
+            // Load Google Identity Services library
+            const scriptGis = document.createElement('script');
+            scriptGis.src = 'https://accounts.google.com/gsi/client';
+            scriptGis.onload = () => {
+                tokenClient = google.accounts.oauth2.initTokenClient({
+                    client_id: '16377848915-cndi95lnojhae7njfkfq7dens0dha7l0.apps.googleusercontent.com',
+                    scope: 'https://www.googleapis.com/auth/drive.file',
+                    callback: '' // Will be set later
+                });
+                gisLoaded = true;
+                initializeApp();
+            };
+            document.body.appendChild(scriptGis);
+        }
+
+        // Start the app when DOM is loaded
+        document.addEventListener('DOMContentLoaded', loadGoogleApis);
+    </script>
+</body>
+</html>
+    
